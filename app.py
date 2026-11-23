@@ -22,6 +22,8 @@ runtime, because it ships no HTTP server:
 """
 
 import asyncio
+import audioop
+import wave
 import hmac
 import os
 import re
@@ -46,6 +48,9 @@ VAE_MODEL = os.path.join(MODEL_DIR, "vibeasr-vae-encoder-i8_s.gguf")
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES") or 100 * 1024 * 1024)
 MAX_AUDIO_SECONDS = float(os.environ.get("MAX_AUDIO_SECONDS") or 600)
 PROCESS_TIMEOUT = float(os.environ.get("PROCESS_TIMEOUT") or 270)
+# The runtime's memory grows linearly with the audio it is given at once (measured about 190 MB per
+# second of audio on top of 1.3 GB), so long files are cut into windows at their quietest point.
+CHUNK_SECONDS = float(os.environ.get("CHUNK_SECONDS") or 15)
 MODEL_ID = "vibevoice-asr-bitnet"
 PUBLIC_PATHS = {"/health"}
 SAMPLE_RATE = 24000
@@ -136,6 +141,39 @@ def run_model(wav_path, prompt_format, context):
     return _read_until("---END---").strip()
 
 
+def split_wav(wav_path, out_dir):
+    """Cut a mono 16-bit WAV into windows of about CHUNK_SECONDS, each ending at the quietest
+    100 ms block within 3 s either side of the target, so words are not cut in half."""
+    with wave.open(wav_path, "rb") as w:
+        rate, width, frames = w.getframerate(), w.getsampwidth(), w.getnframes()
+        pcm = w.readframes(frames)
+    total = len(pcm) // width
+    target, block, reach = int(CHUNK_SECONDS * rate), int(0.1 * rate), int(3 * rate)
+    if total <= target + reach:
+        return [wav_path]
+    cuts, pos = [], 0
+    while total - pos > target + reach:
+        lo, hi = pos + target - reach, min(pos + target + reach, total - block)
+        best, best_rms = pos + target, None
+        for i in range(lo, hi, block):
+            r = audioop.rms(pcm[i * width:(i + block) * width], width)
+            if best_rms is None or r < best_rms:
+                best, best_rms = i, r
+        cuts.append(best + block // 2)
+        pos = cuts[-1]
+    paths, start = [], 0
+    for n, end in enumerate(cuts + [total]):
+        p = os.path.join(out_dir, f"chunk{n:04d}.wav")
+        with wave.open(p, "wb") as o:
+            o.setnchannels(1)
+            o.setsampwidth(width)
+            o.setframerate(rate)
+            o.writeframes(pcm[start * width:end * width])
+        paths.append(p)
+        start = end
+    return paths
+
+
 def kill_runtime():
     global _proc
     _ready.clear()
@@ -213,7 +251,12 @@ async def transcribe(file: UploadFile = File(...), model: str = Form(MODEL_ID), 
 
         def work():
             try:
-                result["raw"] = run_model(wav, fmt, prompt)
+                parts = [run_model(p, fmt, prompt) for p in split_wav(wav, tmp)]
+                for p in parts:
+                    if p.startswith("[ERROR]"):
+                        result["raw"] = p
+                        return
+                result["raw"] = " ".join(x for x in parts if x)
             except Exception as e:  # noqa: BLE001
                 result["err"] = str(e)
 

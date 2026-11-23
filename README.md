@@ -9,5 +9,5 @@ Image: `ghcr.io/bon5co/vibeasr-railway`. See `NOTICE` for the licences of everyt
   `response_format` = `json` | `text` | `verbose_json`.
 - `GET /v1/models`: the model and the limits in force.
 
-Environment: `API_KEY` (required), `MAX_UPLOAD_BYTES`, `MAX_AUDIO_SECONDS`, `PROCESS_TIMEOUT`.
+Environment: `API_KEY` (required), `MAX_UPLOAD_BYTES`, `MAX_AUDIO_SECONDS`, `PROCESS_TIMEOUT`, `CHUNK_SECONDS` (default 15: long audio is cut into windows at quiet points because the runtime needs about 190 MB of RAM per second of audio it is given at once).
 Supported languages per the model card: en, zh, fr, it, ko, pt, vi. No timestamps (plain text only).
