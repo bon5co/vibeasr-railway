@@ -1,0 +1,14 @@
+Wrapper code in this repository (app.py, entrypoint.sh, Dockerfile) is Apache-2.0, see LICENSE.
+
+The container image built from it also contains:
+
+- VibeASR.cpp (https://github.com/microsoft/VibeASR.cpp, commit c4334009c88060f86cdbbd684b62662f710b6c20), MIT,
+  (c) Microsoft Corporation. Only the asr_stream_server binary is built and shipped.
+- llama.cpp / ggml as vendored by VibeASR.cpp (fork XsquirrelC/llama.cpp, branch vibeasr-dev, commit
+  a2fdadc20285df2dce90402fca9264a93a8eb32f), MIT, (c) 2023-2024 The ggml authors.
+- VibeVoice-ASR-BitNet weights (https://huggingface.co/microsoft/VibeVoice-ASR-BitNet, revision
+  66e78021ab8f5f06133d1ab421ba4d348bda97c9): vibeasr-lm-i2_s-embed-q6_k.gguf and vibeasr-vae-encoder-i8_s.gguf,
+  fetched at build time and verified by sha256. The model card front matter reads `license: mit`. It is a
+  compressed variant of microsoft/VibeVoice-ASR; technical report https://arxiv.org/abs/2607.21075.
+- FFmpeg (LGPL/GPL components, Debian package `ffmpeg`), used as a separate process to decode uploads.
+- Python 3.12, FastAPI (MIT), Uvicorn (BSD-3-Clause), python-multipart (Apache-2.0), each under its own licence.
